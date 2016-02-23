@@ -68,7 +68,7 @@ def process(P, F, stamp=False, plot=False):
         for entry in np.hstack((bright, faint)):
             cutStamp(img, header, stampDir, entry, catalog, 2)
     
-    for entry in bright[bright['NUMBER']>6]:
+    for entry in bright:
         
         #find all entries that might overlap
         startTime = time.time()
