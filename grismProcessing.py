@@ -6,6 +6,7 @@ from scipy import optimize, interpolate, stats
 
 #custom functions
 from functions import *
+from plotting import *
 
 def process(P, F, stamp=False, plot=False):
     '''P is an int refering to the Par being processed
@@ -14,10 +15,6 @@ def process(P, F, stamp=False, plot=False):
     if plot is True, a pdf showing the steps of the processing will be created and put in a directory called stages'''
     
     if plot:
-        import matplotlib
-        matplotlib.use('AGG') #non-interactive backend
-        from matplotlib import pyplot as plt
-        from matplotlib.colors import SymLogNorm
         logging.info('Plotting enabled')
         
     if F==110:
@@ -58,7 +55,7 @@ def process(P, F, stamp=False, plot=False):
     faint = catalog[catalog['MAG_F1153W']>magcutFaint]
     stars = catalog[(catalog['MAG_F1153W']<=magcutBright) & (catalog['CLASS_STAR']>0.1)]
     bright = catalog[(catalog['MAG_F1153W']<=magcutFaint) & ((catalog['MAG_F1153W']>magcutBright) | (catalog['CLASS_STAR']<=0.1))]
-    #fb = np.hstack((bright, faint))
+    #sb = np.hstack((bright, stars))
     
     #cut stamps
     if stamp or not os.path.exists('%s/stamp1.fits' % stampDir):
@@ -186,10 +183,8 @@ def process(P, F, stamp=False, plot=False):
             et = time.time()
             logging.info(minimization)
             logging.info('Time to optimize: %f' % (et-st))
-            weights = minimization['x']
-            offsets = weights[1::2]
-            success = minimization['success']
-            if not success:
+            offsets = minimization['x'][1::2]
+            if not minimization['success']:
                 print 'Overall minimization unsuccessful'
             
             #plot the data and models
@@ -197,25 +192,9 @@ def process(P, F, stamp=False, plot=False):
                 plotDir = '%s/%i' % (detailsDir, entry['NUMBER'])
                 if not os.path.exists(plotDir):
                     os.mkdir(plotDir)
-                
-                f, (dataPlot, residPlot) = plt.subplots(2)
-                dataPlot.plot(gimg, alpha=0.1)
-                dataPlot.plot(pRange, gColumnTotalFine, label='mean')
-                weightedProfArrays = makeModels(profiles, weights[0::2], offsets, gdy)
-                outputModel = np.zeros(len(pRange))
-                for profNum, prof in enumerate(weightedProfArrays):
-                    dataPlot.plot(pRange, prof, label='model %i' % profNum)
-                    outputModel += prof
-                
-                dataPlot.legend(loc='best')
-                dataPlot.set_ylabel('intensity')
-                dataPlot.set_title('Compressed grism: %s\nweights = %s' % ('success' if success else 'failure', weights))
-                residPlot.plot(pRange, gColumnTotalFine - outputModel, label='residual')
-                residPlot.legend(loc='best')
-                residPlot.set_xlabel('y (pixels)')
-                residPlot.set_ylabel('residual')
-                plt.savefig('%s/compressedGrism.png' % plotDir)
-                plt.close(f)
+                totalSuccess = minimization['success']
+                wpa = makeModels(profiles, minimization['x'][0::2], offsets, gdy)
+                plotCompressedGrism(gimg, pRange, gColumnTotalFine, wpa, minimization, plotDir)
             
             #determine contributions due to each object via chi^2 minimization
             #each column point is the mean of the three points centered around its index
@@ -260,22 +239,7 @@ def process(P, F, stamp=False, plot=False):
                 
                 #plot the data and models
                 if plot and not x%(gdx/10): #only plot 10 x values
-                    f, (dataPlot, residPlot) = plt.subplots(2)
-                    dataPlot.plot(pRange, gColumnFine, label='observed')
-                    model = np.zeros(len(pRange))
-                    for profNum, prof in enumerate(weightedProfArrays):
-                        dataPlot.plot(pRange, prof, label='model %i' % profNum)
-                        model += prof
-                    
-                    dataPlot.legend(loc='best')
-                    dataPlot.set_ylabel('intensity')
-                    dataPlot.set_title('At x = %i: %s\nweights = %s' % (x, 'success' if minimization['success'] else 'failure', weights))
-                    residPlot.plot(pRange, gColumnFine - model, label='residual')
-                    residPlot.legend(loc='best')
-                    residPlot.set_xlabel('y (pixels)')
-                    residPlot.set_ylabel('residual')
-                    plt.savefig('%s/grismAt%i.png' % (plotDir, x))
-                    plt.close(f)
+                    plotIndividualWavelengths(pRange, gColumnFine, weightedProfArrays, minimization, x, plotDir)
                 
                 #subtract each contaminating profile from the grism
                 for y, ySlice in enumerate(gimg):
@@ -296,50 +260,7 @@ def process(P, F, stamp=False, plot=False):
             if plot:
                 contamFile = '%s/contam%i.fits' % (modelDir, entry['NUMBER'])
                 fits.writeto(contamFile, data=contamGimg.data, header=gheader, clobber=True)
-                
-                xmin, xmax, ymin, ymax = max(entry['X_IMAGE']-gdx/2., 0), min(entry['X_IMAGE']+gdx/2., img.shape[1]-1), \
-                                         max(entry['Y_IMAGE']-gdy/2., 0), min(entry['Y_IMAGE']+gdy/2., img.shape[0]-1)
-                
-                f, ((directImagePlot, directImageProfilePlot), (grismPlot, grismProfilePlot), (contamPlot, contamProfilePlot), \
-                    (subtractedPlot, subtractedProfilePlot)) = plt.subplots(4, 2, sharey=True)
-
-                #plot a grism-sized piece of the direct image
-                crop = img[ymin:ymax, xmin:xmax]
-                directImagePlot.imshow(crop, norm=SymLogNorm(0.1))
-                if success:
-                    directImagePlot.set_title('object %i' % entry['NUMBER'])
-                else:
-                    directImagePlot.set_title('object %i (minimization unsuccessful)' % entry['NUMBER'])
-                
-                directImagePlot.set_ylabel('direct')
-                directImagePlot.axis([0, gdx, 0, gdy])
-                directImageProfile = profile
-                for profNum in c_profiles:
-                    directImageProfile += c_profiles[profNum]
-                
-                directImageProfilePlot.plot(directImageProfile, pRange)
-                directImageProfilePlot.set_title('profiles')
-                
-                #plot the measured grism and its intensity profile
-                vmin = np.ma.min(gimgMasked)
-                vmax = np.ma.max(gimgMasked)
-                grismPlot.imshow(gimgMasked, norm=SymLogNorm(0.1, vmin=vmin, vmax=vmax))
-                grismPlot.set_ylabel('grism')
-                grismProfilePlot.plot(gColumnTotalFine, pRange)
-                
-                #plot the contamination model and its intensity profile
-                contamPlot.imshow(contamGimg, norm=SymLogNorm(0.01))
-                contamPlot.set_ylabel('model')
-                contamProfilePlot.plot(outputModel, pRange)
-                
-                #plot the subtracted grism and its intensity profile
-                subtractedPlot.imshow(subtractGimg, norm=SymLogNorm(0.1, vmin=vmin, vmax=vmax))
-                subtractedPlot.set_ylabel('subtracted')
-                subtractedProfile = np.ma.average(subtractGimg, axis=-1)
-                subtractedProfilePlot.plot(subtractedProfile, xrange(gdy))
-                
-                plt.savefig('%s/stages%i.png' % (stageDir, entry['NUMBER']))
-                plt.close(f)
+                plotFinalResults(entry, img, totalSuccess, profile, c_profiles, pRange, gimgMasked, gColumnTotalFine, contamGimg, wpa, subtractGimg, stageDir)
         
         endTime = time.time()
         logging.info('Total time for object %i: %f' % (entry['NUMBER'], endTime-startTime))
