@@ -70,13 +70,10 @@ def cutStamp(img, imgHeader, outdir, entry, catalog, scale=1):
         gx, gy = np.meshgrid(range(xmin,xmax), range(ymin,ymax))
         ix, iy = gx.flatten(), gy.flatten()
         cond = inEllipse(ix, iy, contam['X_IMAGE'], contam['Y_IMAGE'], contam['A_IMAGE'], contam['B_IMAGE'], contam['THETA_IMAGE'])
-        img[iy[cond], ix[cond]] = 0#self.sky_median
+        img[iy[cond], ix[cond]] = 0
     
-    stamp = Cutout2D(data=img, position=(xc-1,yc-1), size=(scale*dy,scale*dx), wcs=wcs.WCS(imgHeader), mode='trim')
+    stamp = Cutout2D(data=img, position=(xc-1,yc-1), size=(2*scale*dy,2*scale*dx), wcs=wcs.WCS(imgHeader), mode='trim')
     stampHeader = stamp.wcs.to_header()
-    for x in ['CRPIX1', 'CRPIX2']:
-        stampHeader[x] = imgHeader[x]
-    
     fits.writeto('%s/stamp%i.fits' % (outdir, entry['NUMBER']), data=stamp.data, header=stampHeader, clobber=True)
     
     return None

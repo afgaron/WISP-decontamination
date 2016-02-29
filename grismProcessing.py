@@ -61,9 +61,9 @@ def process(P, F, stamp=False, plot=False):
     if stamp or not os.path.exists('%s/stamp1.fits' % stampDir):
         print 'Cutting stamps'
         for entry in stars:
-            cutStamp(img, header, stampDir, entry, catalog, 4)
-        for entry in np.hstack((bright, faint)):
             cutStamp(img, header, stampDir, entry, catalog, 2)
+        for entry in np.hstack((bright, faint)):
+            cutStamp(img, header, stampDir, entry, catalog)
     
     for entry in bright:
         
