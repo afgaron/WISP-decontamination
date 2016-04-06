@@ -126,8 +126,8 @@ def process(P, F, stamp=False, plot=False):
                 c_sheader = fits.getheader(c_stamp, 0)
                 c_sdx = c_sheader['NAXIS1']
                 c_sdy = c_sheader['NAXIS2']
-                c_xoffset = (contam['X_IMAGE'] - entry['X_IMAGE'])*distortionFactor #why distorted?
-                c_yoffset = (contam['Y_IMAGE'] - entry['Y_IMAGE'])*distortionFactor #why distorted?
+                c_xoffset = (contam['X_IMAGE'] - entry['X_IMAGE'])*distortionFactor
+                c_yoffset = (contam['Y_IMAGE'] - entry['Y_IMAGE'])*distortionFactor
                 c_stripe = [] #linear profile starting from bottom of stamp
                 for row in c_simg:
                     val = 0
@@ -136,7 +136,7 @@ def process(P, F, stamp=False, plot=False):
                             val += col
                     c_stripe.append(val)
                 
-                #make the stripe a spline to allow subpixelling to 0.01 pix
+                #make the stripe a spline to allow subpixelling
                 c_spline = interpolate.interp1d(xrange(c_sdy), c_stripe, kind='linear', bounds_error=False, fill_value=0)
                 c_fineRange = np.array(xrange(100*c_sdy))/100.
                 c_splineVals = c_spline(c_fineRange)
@@ -153,7 +153,7 @@ def process(P, F, stamp=False, plot=False):
                 c_profile = c_profileInterp(pRange)
                 
                 #determine to where in grism the contamination may extend
-                #needs improvement; currently too generous
+                #assumes tophat prior; use grism response curve eventually
                 cdx = [max(0, c_xoffset-contam['A_IMAGE']), min(c_xoffset+gimg.shape[1]+contam['A_IMAGE'], gdx-1)]
                 
                 c_bounds[contam['NUMBER']] = cdx
